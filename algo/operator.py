@@ -116,7 +116,7 @@ class Operator(util.OperatorBase):
             return epsilon
 
     def create_clustering(self, epsilon):
-        self.time_window_consumption_clustering[str(self.last_time_window_start)] = DBSCAN(eps=epsilon, min_samples=7).fit(np.array([five_min_consumption 
+        self.time_window_consumption_clustering[str(self.last_time_window_start)] = DBSCAN(eps=epsilon, min_samples=10).fit(np.array([five_min_consumption 
                                                                      for _, five_min_consumption in self.time_window_consumption_list_dict[str(self.last_time_window_start)]]).reshape(-1,1))
         with open(self.clustering_file_path, 'wb') as f:
             pickle.dump(self.time_window_consumption_clustering, f)
