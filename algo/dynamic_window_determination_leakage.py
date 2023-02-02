@@ -26,7 +26,7 @@ def compute_five_min_consumptions(grouped_five_min):
         five_min_data = []
         for group in day:
             try:
-                five_min_data.append(list(group[1])[-1]-list(group[1])[0])
+                five_min_data.append(1000*(list(group[1])[-1]-list(group[1])[0]))
             except:
                 five_min_data.append(0)
         consumption_series_list_five_min.append(pd.Series(data=five_min_data, index=[group[0] for group in day]))
