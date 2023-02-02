@@ -27,7 +27,7 @@ from itertools import chain
 import pickle
 import datetime
 from collections import defaultdict
-import dynamic_window_determination_leakage as dwdl
+from . import dynamic_window_determination_leakage as dwdl
 
 class Operator(util.OperatorBase):
     def __init__(self, device_id, data_path, device_name='das Gerät'):
