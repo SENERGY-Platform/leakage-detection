@@ -138,8 +138,8 @@ class Operator(util.OperatorBase):
         self.timestamp = self.todatetime(data['Time']).tz_localize(None)
         print('energy: '+str(data['Consumption'])+'  '+'time: '+str(self.timestamp))
         self.data_history = pd.concat([self.data_history, pd.Series([float(data['Consumption'])], index=[self.timestamp])])
-        if self.timestamp.day%7==0 and self.current_five_min.day<self.timestamp.day:
-            self.update_time_window_data()
+        #if self.timestamp.day%7==0 and self.current_five_min.day<self.timestamp.day:
+            #self.update_time_window_data()
         self.current_five_min = self.timestamp.floor('5T')
         if self.consumption_same_five_min == []:
             self.consumption_same_five_min.append(data)
