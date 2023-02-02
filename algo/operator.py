@@ -104,7 +104,7 @@ class Operator(util.OperatorBase):
         return
 
     def determine_epsilon(self):
-        neighbors = NearestNeighbors(n_neighbors=10)
+        neighbors = NearestNeighbors(n_neighbors=5)
         neighbors_fit = neighbors.fit(np.array([five_min_consumption for _, five_min_consumption in self.time_window_consumption_list_dict[str(self.last_time_window_start)]]).reshape(-1,1))
         distances, _ = neighbors_fit.kneighbors(np.array([five_min_consumption for _, five_min_consumption in self.time_window_consumption_list_dict[str(self.last_time_window_start)]]).reshape(-1,1))
         distances = np.sort(distances, axis=0)
@@ -153,7 +153,7 @@ class Operator(util.OperatorBase):
                 return
             else:
                 self.update_time_window_consumption_list_dict()
-                if len(self.time_window_consumption_list_dict[str(self.last_time_window_start)]) >= 24:
+                if len(self.time_window_consumption_list_dict[str(self.last_time_window_start)]) >= 5:
                     epsilon = self.determine_epsilon()
                     clustering_labels = self.create_clustering(epsilon)
                     days_with_excessive_five_min_consumption_during_this_time_window_of_day = self.test_time_window_consumption(clustering_labels)
