@@ -96,6 +96,9 @@ class Operator(util.OperatorBase):
         else:
             self.last_time_window_start = max(time for time in self.window_boundaries_times if time<self.current_five_min.time())
         self.time_window_consumption_list_dict[str(self.last_time_window_start)].append((self.timestamp, overall_five_min_consumption))
+        for i, entry in enumerate(self.time_window_consumption_list_dict[str(self.last_time_window_start)]):
+            if self.timestamp-entry[0] > pd.Timedelta(28,'d'):
+                del self.time_window_consumption_list_dict[str(self.last_time_window_start)][i]
         with open(self.time_window_consumption_list_dict_file_path, 'wb') as f:
             pickle.dump(self.time_window_consumption_list_dict, f)
         return
