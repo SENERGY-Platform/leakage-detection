@@ -27,14 +27,11 @@ from itertools import chain
 import pickle
 import datetime
 from collections import defaultdict
-from . import dynamic_window_determination_leakage as dwdl
 
 class Operator(util.OperatorBase):
-    def __init__(self, device_id, data_path, device_name='das Gerät'):
+    def __init__(self, device_id, data_path):
         if not os.path.exists(data_path):
             os.mkdir(data_path)
-
-        self.device_name = device_name
 
         self.time_window_consumption_list_dict = defaultdict(list)
         self.time_window_consumption_list_dict_anomalies = defaultdict(list)
@@ -69,21 +66,6 @@ class Operator(util.OperatorBase):
                 return pd.to_datetime(int(timestamp), unit='ns')
         else:
             return pd.to_datetime(timestamp)
-
-    def create_new_time_window_consumption_list_dict(self):
-        self.time_window_consumption_list_dict = defaultdict(list)
-        grouped_five_min = dwdl.create_daily_five_min_groups(self.data_history)
-        consumption_series_list_five_min =  dwdl.compute_five_min_consumptions(grouped_five_min)
-        for i, time in enumerate(self.window_boundaries_times[:-1]):
-            for day in consumption_series_list_five_min:
-                aux_time_start = day.index[0].floor('d')+pd.Timedelta(str(time))
-                aux_time_stop = day.index[0].floor('d')+pd.Timedelta(str(self.window_boundaries_times[i+1]))
-                aux_partial_series = day[aux_time_start:aux_time_stop]
-                self.time_window_consumption_list_dict[str(time)].extend([(aux_partial_series.index[i], aux_partial_series.iloc[i]) for i in range(len(aux_partial_series))])
-
-    def update_time_window_data(self):
-        self.window_boundaries_times = dwdl.window_determination(self.data_history)
-        self.create_new_time_window_consumption_list_dict()
 
     def update_time_window_consumption_list_dict(self):
         min_index = np.argmin([float(datapoint['Consumption']) for datapoint in self.consumption_same_five_min])
@@ -141,8 +123,6 @@ class Operator(util.OperatorBase):
         self.timestamp = self.todatetime(data['Time']).tz_localize(None)
         print('energy: '+str(data['Consumption'])+'  '+'time: '+str(self.timestamp))
         self.data_history = pd.concat([self.data_history, pd.Series([float(data['Consumption'])], index=[self.timestamp])])
-        #if self.timestamp.day%7==0 and self.current_five_min.day<self.timestamp.day:
-            #self.update_time_window_data()
         self.current_five_min = self.timestamp.floor('5T')
         if self.consumption_same_five_min == []:
             self.consumption_same_five_min.append(data)
