@@ -139,7 +139,7 @@ class Operator(util.OperatorBase):
                     days_with_excessive_five_min_consumption_during_this_time_window_of_day = self.test_time_window_consumption(clustering_labels)
                     self.consumption_same_five_min = [data]                 
                     if self.timestamp in list(chain.from_iterable(days_with_excessive_five_min_consumption_during_this_time_window_of_day)):
-                        return {'value': f'Nachricht vom {str(self.timestamp.date())} um {str(self.timestamp.hour)}:{str(self.timestamp.minute)} Uhr: In den letzten 5 Minuten wurde übermäßig viel Wasser verbraucht.'} # Excessive time window consumption just detected.
+                        return {'value': f'In den letzten 5 Minuten wurde übermäßig viel Wasser verbraucht.'} # Excessive time window consumption just detected.
                     else:
                         return  # No excessive consumtion just detected.
                 else:
