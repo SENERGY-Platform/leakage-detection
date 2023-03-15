@@ -133,7 +133,7 @@ class Operator(util.OperatorBase):
                 return
             else:
                 self.update_time_window_consumption_list_dict()
-                if len(self.time_window_consumption_list_dict[str(self.last_time_window_start)]) >= 5:
+                if self.time_window_consumption_list_dict[str(self.last_time_window_start)][-1][0]-self.time_window_consumption_list_dict[str(self.last_time_window_start)][0][0] >= pd.Timedelta(14,'d'):
                     epsilon = self.determine_epsilon()
                     clustering_labels = self.create_clustering(epsilon)
                     days_with_excessive_five_min_consumption_during_this_time_window_of_day = self.test_time_window_consumption(clustering_labels)
