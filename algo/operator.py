@@ -121,7 +121,7 @@ class Operator(util.OperatorBase):
     
     def run(self, data, selector='energy_func'):
         self.timestamp = self.todatetime(data['Time']).tz_localize(None)
-        print('energy: '+str(data['Consumption'])+'  '+'time: '+str(self.timestamp))
+        print('consumption: '+str(data['Consumption'])+'  '+'time: '+str(self.timestamp))
         self.data_history = pd.concat([self.data_history, pd.Series([float(data['Consumption'])], index=[self.timestamp])])
         self.current_five_min = self.timestamp.floor('5T')
         if self.consumption_same_five_min == []:
