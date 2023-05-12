@@ -58,6 +58,13 @@ class Operator(util.OperatorBase):
         self.time_window_consumption_list_dict_file_path = f'{data_path}/time_window_consumption_list_dict.pickle'
         self.time_window_consumption_list_dict_anomaly_file_path = f'{data_path}/time_window_consumption_list_dict_anomaly.pickle'
 
+        if os.path.exists(self.time_window_consumption_list_dict_file_path):
+            with open(self.time_window_consumption_list_dict_file_path, 'rb') as f:
+                self.time_window_consumption_list_dict = pickle.load(f)
+        if os.path.exists(self.time_window_consumption_list_dict_anomaly_file_path):
+            with open(self.time_window_consumption_list_dict_anomaly_file_path, 'rb') as f:
+                self.time_window_consumption_list_dict_anomalies = pickle.load(f)
+
     def todatetime(self, timestamp):
         if str(timestamp).isdigit():
             if len(str(timestamp))==13:
