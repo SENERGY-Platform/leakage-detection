@@ -2,7 +2,6 @@
   "config": {
     "energy_src_id": "device:1",
     "weather_src_id": "import:1",
-    "selectors": "[{\"name\":\"func_1\",\"args\":[\"a\",\"timestamp\"]},{\"name\":\"func_2\",\"args\":[\"a\",\"b\",\"timestamp\"]}]",
     "logger_level": "debug"
   },
   "inputTopics": [

@@ -14,8 +14,7 @@
    limitations under the License.
 """
 
-from ._util import *
-import algo
+from _util import MockKafkaConsumer, mock_messages, MockOperator, MockKafkaProducer, mock_result, init_filter_handler, mock_opr_config
 import unittest
 
 

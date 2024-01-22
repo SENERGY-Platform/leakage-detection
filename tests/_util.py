@@ -14,7 +14,7 @@
    limitations under the License.
 """
 
-import util
+from operator_lib.util import OperatorConfig, OperatorBase, gen_filter, Selector
 import mf_lib
 import logging
 import json
@@ -34,15 +34,18 @@ with open("tests/resources/mock_result.json") as file:
 
 
 def init_filter_handler(opr_config, pipeline_id: str):
-    if not isinstance(opr_config, util.OperatorConfig):
-        opr_config = util.OperatorConfig(opr_config)
+    if not isinstance(opr_config, OperatorConfig):
+        opr_config = OperatorConfig(opr_config)
     filter_handler = mf_lib.FilterHandler()
     for it in opr_config.inputTopics:
-        filter_handler.add_filter(util.gen_filter(input_topic=it, selectors=opr_config.config.selectors, pipeline_id=pipeline_id))
+        filter_handler.add_filter(gen_filter(input_topic=it, selectors=[
+            Selector({"name": "func_1", "args":["a", "timestamp"]}),
+            Selector({"name": "func_2", "args":["a", "b", "timestamp"]})
+        ], pipeline_id=pipeline_id))
     return filter_handler
 
 
-class MockOperator(util.OperatorBase):
+class MockOperator(OperatorBase):
     def func_1(self, a, timestamp):
         assert a == mock_messages[0]["data"]["val_a"]
         assert timestamp == mock_messages[0]["data"]["time"]
