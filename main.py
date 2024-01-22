@@ -35,7 +35,8 @@ class CustomConfig(Config):
 class Operator(OperatorBase):
     configType = CustomConfig
 
-    def init(self):
+    def init(self, *args, **kwargs):
+        super.init(*args, **kwargs)
         data_path = self.config.data_path
 
         if not os.path.exists(data_path):
