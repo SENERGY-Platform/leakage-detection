@@ -1,3 +1,3 @@
-# Hourly Consumption Profile
+# Leakage Detection
 
 ## Config options
