@@ -135,7 +135,7 @@ class Operator(OperatorBase):
 
         return [self.time_window_consumption_list_dict[str(self.last_time_window_start)][i] for i in anomalous_indices_high]
     
-    def run(self, data, selector='energy_func'):
+    def run(self, data, selector='energy_func', topic=''):
         self.timestamp = self.todatetime(data['Time']).tz_localize(None)
         print('consumption: '+str(data['Consumption'])+'  '+'time: '+str(self.timestamp))
         self.data_history = pd.concat([self.data_history, pd.Series([float(data['Consumption'])], index=[self.timestamp])])
