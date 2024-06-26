@@ -122,7 +122,7 @@ class Operator(OperatorBase):
         quantile = np.quantile([five_min_consumption for _, five_min_consumption in self.time_window_consumption_list_dict[str(self.last_time_window_start)]],0.995)
         anomalous_indices_high = [i for i in anomalous_indices if self.time_window_consumption_list_dict[str(self.last_time_window_start)][i][1] > quantile]
         if len(self.time_window_consumption_list_dict[str(self.last_time_window_start)])-1 in anomalous_indices_high:
-            print(f'In den letzten 5 Minuten wurde ungewöhnlich viel verbraucht.')
+            logger.warning(f'In den letzten 5 Minuten wurde ungewöhnlich viel verbraucht.')
             self.time_window_consumption_list_dict_anomalies[str(self.last_time_window_start)].append(self.time_window_consumption_list_dict[str(self.last_time_window_start)][-1])
         save(self.data_path, "time_window_consumption_list_dict_anomaly.pickle", self.time_window_consumption_list_dict_anomalies)
 
@@ -130,7 +130,7 @@ class Operator(OperatorBase):
     
     def run(self, data, selector='energy_func', topic=''):
         self.timestamp = self.todatetime(data['Time']).tz_localize(None)
-        print('consumption: '+str(data['Consumption'])+'  '+'time: '+str(self.timestamp))
+        logger.debug('consumption: '+str(data['Consumption'])+'  '+'time: '+str(self.timestamp))
         self.current_five_min = self.timestamp.floor('5T')
         if self.consumption_same_five_min == []:
             self.consumption_same_five_min.append(data)
