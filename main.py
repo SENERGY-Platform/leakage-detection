@@ -63,7 +63,8 @@ class Operator(OperatorBase):
                     "value": 0,
                     "timestamp": "",
                     "message": "",
-                    "last_consumptions": ""
+                    "last_consumptions": "",
+                    "time_window": ""
         }
         self.init_phase_handler.send_first_init_msg(value)
 
@@ -145,7 +146,8 @@ class Operator(OperatorBase):
                     "value": 0,
                     "timestamp": str(self.timestamp),
                     "message": "",
-                    "last_consumptions": ""
+                    "last_consumptions": "",
+                    "time_window": ""
         }
 
         self.current_five_min = self.timestamp.floor('5T')
@@ -166,15 +168,38 @@ class Operator(OperatorBase):
                     days_with_excessive_five_min_consumption_during_this_time_window_of_day = self.test_time_window_consumption(clustering_labels)
                     self.consumption_same_five_min = [data]                 
                     if self.timestamp in list(chain.from_iterable(days_with_excessive_five_min_consumption_during_this_time_window_of_day)):
-                        return {'value': f'In den letzten 5 Minuten wurde übermäßig viel Wasser verbraucht.'} # Excessive time window consumption just detected.
+                        df_cons_last_14_days = self.create_df_cons_last_14_days()
+                        return self.create_output(1, self.timestamp, df_cons_last_14_days) # Excessive time window consumption just detected.
                     else:
-                        return  # No excessive consumption just detected.
+                        return self.create_output(0, self.timestamp, df_cons_last_14_days) # No excessive consumption just detected.
                 elif operator_is_init:
                     self.consumption_same_five_min = [data]
                     return self.init_phase_handler.generate_init_msg(self.timestamp, init_value)
 
         
-        
+    def create_df_cons_last_14_days(self):
+        ends_of_5min_slots_in_time_window = [timestamp for timestamp, _ in self.time_window_consumption_list_dict[str(self.last_time_window_start)] if 
+                                             self.timestamp-timestamp < pd.Timedelta(14, "d")]
+        print(f"5 min slots in time window: {ends_of_5min_slots_in_time_window}")
+        time_window_5min_consumptions = [consumption for timestamp, consumption in self.time_window_consumption_list_dict[str(self.last_time_window_start)] if 
+                                         self.timestamp-timestamp < pd.Timedelta(14, "d")]
+        print(f"Time Window 5min Consumptions: {time_window_5min_consumptions}")
+        df = pd.DataFrame(time_window_5min_consumptions, index=ends_of_5min_slots_in_time_window)
+        print(f"Df: {df}")
+        return df.reset_index(inplace=False).to_json(orient="values")
+    
+    def create_output(self, anomaly, timestamp, df_cons_last_14_days):
+        if anomaly == 0:
+            message = ""
+        elif anomaly == 1:
+            message = f'In den letzten 5 Minuten wurde übermäßig viel Wasser verbraucht.'
+        return {
+                    "value": anomaly,
+                    "timestamp": str(timestamp),
+                    "message": message,
+                    "last_consumptions": df_cons_last_14_days,
+                    "time_window": f'{str(self.last_time_window_start)}-{str(self.last_time_window_start+pd.Timedelta(1,"h"))}'
+        }    
 
 
 from operator_lib.operator_lib import OperatorLib
