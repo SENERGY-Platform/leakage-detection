@@ -16,7 +16,7 @@
 
 __all__ = ("Operator", )
 
-from operator_lib.util import OperatorBase, logger, InitPhase
+from operator_lib.util import OperatorBase, logger, InitPhase, todatetime
 from operator_lib.util.persistence import save, load
 import pandas as pd
 import numpy as np
@@ -72,15 +72,6 @@ class Operator(OperatorBase):
         self.time_window_consumption_list_dict = load(self.data_path, "time_window_consumption_list_dict.pickle", default=defaultdict(list))
         self.time_window_consumption_list_dict_anomalies = load(self.data_path, "time_window_consumption_list_dict_anomaly.pickle", default=defaultdict(list))
 
-    def todatetime(self, timestamp):
-        if str(timestamp).isdigit():
-            if len(str(timestamp))==13:
-                return pd.to_datetime(int(timestamp), unit='ms')
-            elif len(str(timestamp))==19:
-                return pd.to_datetime(int(timestamp), unit='ns')
-        else:
-            return pd.to_datetime(timestamp)
-
     def update_time_window_consumption_list_dict(self):
         min_index = np.argmin([float(datapoint['Consumption']) for datapoint in self.consumption_same_five_min])
         max_index = np.argmax([float(datapoint['Consumption']) for datapoint in self.consumption_same_five_min])
@@ -128,14 +119,14 @@ class Operator(OperatorBase):
         return [self.time_window_consumption_list_dict[str(self.last_time_window_start)][i] for i in anomalous_indices_high]
     
     def run(self, data, selector='energy_func', topic=''):
-        self.timestamp = self.todatetime(data['Time']).tz_localize(None)
+        self.timestamp = todatetime(data['Time']).tz_localize(None)
         logger.debug('consumption: '+str(data['Consumption'])+'  '+'time: '+str(self.timestamp))
         self.current_five_min = self.timestamp.floor('5T')
         if self.consumption_same_five_min == []:
             self.consumption_same_five_min.append(data)
             return
         elif self.consumption_same_five_min != []:
-            if self.current_five_min==self.todatetime(self.consumption_same_five_min[-1]['Time']).tz_localize(None).floor('5T'):
+            if self.current_five_min==todatetime(self.consumption_same_five_min[-1]['Time']).tz_localize(None).floor('5T'):
                 self.consumption_same_five_min.append(data)
                 return
             else:
