@@ -39,7 +39,7 @@ class CustomConfig(Config):
         if self.init_phase_length != '':
             self.init_phase_length = float(self.init_phase_length)
         else:
-            self.init_phase_length = 2
+            self.init_phase_length = 14
         
         if self.init_phase_level == '':
             self.init_phase_level = 'd'
@@ -53,6 +53,19 @@ class Operator(OperatorBase):
 
         if not os.path.exists(self.data_path):
             os.mkdir(self.data_path)
+
+        self.first_data_time = load(self.config.data_path, "first_data_time.pickle")
+
+        self.init_phase_duration = pd.Timedelta(self.config.init_phase_length, self.config.init_phase_level)
+
+        self.init_phase_handler = InitPhase(self.data_path, self.init_phase_duration, self.first_data_time, self.produce)
+        value = {
+                    "value": 0,
+                    "timestamp": "",
+                    "message": "",
+                    "last_consumptions": ""
+        }
+        self.init_phase_handler.send_first_init_msg(value)
 
         self.time_window_consumption_list_dict = defaultdict(list)
         self.time_window_consumption_list_dict_anomalies = defaultdict(list)
@@ -120,7 +133,21 @@ class Operator(OperatorBase):
     
     def run(self, data, selector='energy_func', topic=''):
         self.timestamp = todatetime(data['Time']).tz_localize(None)
+        if not self.first_data_time:
+            self.first_data_time = self.timestamp
+            self.init_phase_handler = InitPhase(self.data_path, self.init_phase_duration, self.first_data_time, self.produce)
+            save(self.data_path, "first_data_time.pickle", self.first_data_time)
         logger.debug('consumption: '+str(data['Consumption'])+'  '+'time: '+str(self.timestamp))
+
+        operator_is_init = self.init_phase_handler.operator_is_in_init_phase(self.timestamp)
+        
+        init_value = {
+                    "value": 0,
+                    "timestamp": str(self.timestamp),
+                    "message": "",
+                    "last_consumptions": ""
+        }
+
         self.current_five_min = self.timestamp.floor('5T')
         if self.consumption_same_five_min == []:
             self.consumption_same_five_min.append(data)
@@ -131,7 +158,9 @@ class Operator(OperatorBase):
                 return
             else:
                 self.update_time_window_consumption_list_dict()
-                if self.time_window_consumption_list_dict[str(self.last_time_window_start)][-1][0]-self.time_window_consumption_list_dict[str(self.last_time_window_start)][0][0] >= pd.Timedelta(14,'d'):
+                if not operator_is_init:
+                    if self.init_phase_handler.init_phase_needs_to_be_reset():
+                        return self.init_phase_handler.reset_init_phase(init_value)
                     epsilon = self.determine_epsilon()
                     clustering_labels = self.create_clustering(epsilon)
                     days_with_excessive_five_min_consumption_during_this_time_window_of_day = self.test_time_window_consumption(clustering_labels)
@@ -139,10 +168,13 @@ class Operator(OperatorBase):
                     if self.timestamp in list(chain.from_iterable(days_with_excessive_five_min_consumption_during_this_time_window_of_day)):
                         return {'value': f'In den letzten 5 Minuten wurde übermäßig viel Wasser verbraucht.'} # Excessive time window consumption just detected.
                     else:
-                        return  # No excessive consumtion just detected.
-                else:
+                        return  # No excessive consumption just detected.
+                elif operator_is_init:
                     self.consumption_same_five_min = [data]
-                    return
+                    return self.init_phase_handler.generate_init_msg(self.timestamp, init_value)
+
+        
+        
 
 
 from operator_lib.operator_lib import OperatorLib
