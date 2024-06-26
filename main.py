@@ -25,7 +25,6 @@ from sklearn.cluster import DBSCAN
 import kneed
 import os
 from itertools import chain
-import pickle
 import datetime
 from collections import defaultdict
 
