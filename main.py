@@ -16,7 +16,8 @@
 
 __all__ = ("Operator", )
 
-from operator_lib.util import OperatorBase
+from operator_lib.util import OperatorBase, logger, InitPhase
+from operator_lib.util.persistence import save, load
 import pandas as pd
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
@@ -49,14 +50,13 @@ class Operator(OperatorBase):
 
     def init(self, *args, **kwargs):
         super().init(*args, **kwargs)
-        data_path = self.config.data_path
+        self.data_path = self.config.data_path
 
-        if not os.path.exists(data_path):
-            os.mkdir(data_path)
+        if not os.path.exists(self.data_path):
+            os.mkdir(self.data_path)
 
         self.time_window_consumption_list_dict = defaultdict(list)
         self.time_window_consumption_list_dict_anomalies = defaultdict(list)
-        self.data_history = pd.Series([], index=[],dtype=object)
 
         self.window_boundaries_times =  [datetime.time(0, 0), datetime.time(1, 0), datetime.time(2, 0), datetime.time(3, 0), datetime.time(4, 0), datetime.time(5, 0), datetime.time(6, 0),
                                          datetime.time(7, 0), datetime.time(8, 0), datetime.time(9, 0), datetime.time(10, 0), datetime.time(11, 0), datetime.time(12, 0), datetime.time(13, 0), 
@@ -68,23 +68,10 @@ class Operator(OperatorBase):
 
         self.consumption_same_five_min = []
 
-        self.current_time_window_start = None
-        self.timestamp = None
-        self.last_time_window_start = None
-
         self.time_window_consumption_clustering = {}
 
-        self.clustering_file_path = f'{data_path}/clustering.pickle'
-        self.epsilon_file_path = f'{data_path}/epsilon.pickle'
-        self.time_window_consumption_list_dict_file_path = f'{data_path}/time_window_consumption_list_dict.pickle'
-        self.time_window_consumption_list_dict_anomaly_file_path = f'{data_path}/time_window_consumption_list_dict_anomaly.pickle'
-
-        if os.path.exists(self.time_window_consumption_list_dict_file_path):
-            with open(self.time_window_consumption_list_dict_file_path, 'rb') as f:
-                self.time_window_consumption_list_dict = pickle.load(f)
-        if os.path.exists(self.time_window_consumption_list_dict_anomaly_file_path):
-            with open(self.time_window_consumption_list_dict_anomaly_file_path, 'rb') as f:
-                self.time_window_consumption_list_dict_anomalies = pickle.load(f)
+        self.time_window_consumption_list_dict = load(self.data_path, "time_window_consumption_list_dict.pickle", default=defaultdict(list))
+        self.time_window_consumption_list_dict_anomalies = load(self.data_path, "time_window_consumption_list_dict_anomaly.pickle", default=defaultdict(list))
 
     def todatetime(self, timestamp):
         if str(timestamp).isdigit():
@@ -109,8 +96,7 @@ class Operator(OperatorBase):
         for i, entry in enumerate(self.time_window_consumption_list_dict[str(self.last_time_window_start)]):
             if self.timestamp-entry[0] > pd.Timedelta(28,'d'):
                 del self.time_window_consumption_list_dict[str(self.last_time_window_start)][i]
-        with open(self.time_window_consumption_list_dict_file_path, 'wb') as f:
-            pickle.dump(self.time_window_consumption_list_dict, f)
+        save(self.data_path, "time_window_consumption_list_dict.pickle", self.time_window_consumption_list_dict)
         return
 
     def determine_epsilon(self):
@@ -121,8 +107,6 @@ class Operator(OperatorBase):
         distances_x = distances[:,1]
         kneedle = kneed.KneeLocator(np.linspace(0,1,len(distances_x)), distances_x, S=0.9, curve="convex", direction="increasing")
         epsilon = kneedle.knee_y
-        with open(self.epsilon_file_path, 'wb') as f:
-            pickle.dump(epsilon, f)
         if epsilon==0 or epsilon==None:
             return 1
         else:
@@ -131,8 +115,6 @@ class Operator(OperatorBase):
     def create_clustering(self, epsilon):
         self.time_window_consumption_clustering[str(self.last_time_window_start)] = DBSCAN(eps=epsilon, min_samples=10).fit(np.array([five_min_consumption 
                                                                      for _, five_min_consumption in self.time_window_consumption_list_dict[str(self.last_time_window_start)]]).reshape(-1,1))
-        with open(self.clustering_file_path, 'wb') as f:
-            pickle.dump(self.time_window_consumption_clustering, f)
         return self.time_window_consumption_clustering[str(self.last_time_window_start)].labels_
     
     def test_time_window_consumption(self, clustering_labels):
@@ -142,15 +124,13 @@ class Operator(OperatorBase):
         if len(self.time_window_consumption_list_dict[str(self.last_time_window_start)])-1 in anomalous_indices_high:
             print(f'In den letzten 5 Minuten wurde ungewöhnlich viel verbraucht.')
             self.time_window_consumption_list_dict_anomalies[str(self.last_time_window_start)].append(self.time_window_consumption_list_dict[str(self.last_time_window_start)][-1])
-        with open(self.time_window_consumption_list_dict_anomaly_file_path, 'wb') as f:
-            pickle.dump(self.time_window_consumption_list_dict_anomalies,f)
+        save(self.data_path, "time_window_consumption_list_dict_anomaly.pickle", self.time_window_consumption_list_dict_anomalies)
 
         return [self.time_window_consumption_list_dict[str(self.last_time_window_start)][i] for i in anomalous_indices_high]
     
     def run(self, data, selector='energy_func', topic=''):
         self.timestamp = self.todatetime(data['Time']).tz_localize(None)
         print('consumption: '+str(data['Consumption'])+'  '+'time: '+str(self.timestamp))
-        self.data_history = pd.concat([self.data_history, pd.Series([float(data['Consumption'])], index=[self.timestamp])])
         self.current_five_min = self.timestamp.floor('5T')
         if self.consumption_same_five_min == []:
             self.consumption_same_five_min.append(data)
