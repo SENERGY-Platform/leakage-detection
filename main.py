@@ -166,9 +166,9 @@ class Operator(OperatorBase):
                     epsilon = self.determine_epsilon()
                     clustering_labels = self.create_clustering(epsilon)
                     days_with_excessive_five_min_consumption_during_this_time_window_of_day = self.test_time_window_consumption(clustering_labels)
-                    self.consumption_same_five_min = [data]                 
+                    self.consumption_same_five_min = [data] 
+                    df_cons_last_14_days = self.create_df_cons_last_14_days()              
                     if self.timestamp in list(chain.from_iterable(days_with_excessive_five_min_consumption_during_this_time_window_of_day)):
-                        df_cons_last_14_days = self.create_df_cons_last_14_days()
                         return self.create_output(1, self.timestamp, df_cons_last_14_days) # Excessive time window consumption just detected.
                     else:
                         return self.create_output(0, self.timestamp, df_cons_last_14_days) # No excessive consumption just detected.
