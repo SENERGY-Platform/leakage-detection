@@ -132,7 +132,7 @@ class Operator(OperatorBase):
 
         return [self.time_window_consumption_list_dict[str(self.last_time_window_start)][i] for i in anomalous_indices_high]
     
-    def run(self, data, selector='energy_func', topic=''):
+    def run(self, data, selector='energy_func', device_id=''):
         self.timestamp = todatetime(data['Time']).tz_localize(None)
         if not self.first_data_time:
             self.first_data_time = self.timestamp
