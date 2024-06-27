@@ -198,7 +198,7 @@ class Operator(OperatorBase):
                     "timestamp": str(timestamp),
                     "message": message,
                     "last_consumptions": df_cons_last_14_days,
-                    "time_window": f'{str(self.last_time_window_start)}-{str(self.last_time_window_start+pd.Timedelta(1,"h"))}'
+                    "time_window": f'{str(self.last_time_window_start)}-{str((datetime.datetime.combine(datetime.date.today(), self.last_time_window_start) +datetime.timedelta(hours=1)).time())}'
         }    
 
 
