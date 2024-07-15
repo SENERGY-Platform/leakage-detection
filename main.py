@@ -180,12 +180,9 @@ class Operator(OperatorBase):
     def create_df_cons_last_14_days(self):
         ends_of_5min_slots_in_time_window = [timestamp for timestamp, _ in self.time_window_consumption_list_dict[str(self.last_time_window_start)] if 
                                              self.timestamp-timestamp < pd.Timedelta(14, "d")]
-        print(f"5 min slots in time window: {ends_of_5min_slots_in_time_window}")
         time_window_5min_consumptions = [consumption for timestamp, consumption in self.time_window_consumption_list_dict[str(self.last_time_window_start)] if 
                                          self.timestamp-timestamp < pd.Timedelta(14, "d")]
-        print(f"Time Window 5min Consumptions: {time_window_5min_consumptions}")
         df = pd.DataFrame(time_window_5min_consumptions, index=ends_of_5min_slots_in_time_window)
-        print(f"Df: {df}")
         return df.reset_index(inplace=False).to_json(orient="values")
     
     def create_output(self, anomaly, timestamp, df_cons_last_14_days):
