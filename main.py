@@ -167,7 +167,7 @@ class Operator(OperatorBase):
                     clustering_labels = self.create_clustering(epsilon)
                     days_with_excessive_five_min_consumption_during_this_time_window_of_day = self.test_time_window_consumption(clustering_labels)
                     self.consumption_same_five_min = [data] 
-                    df_cons_last_14_days = self.create_df_cons_last_14_days()              
+                    df_cons_last_14_days = self.create_df_cons_last_14_days(days_with_excessive_five_min_consumption_during_this_time_window_of_day)              
                     if self.timestamp in list(chain.from_iterable(days_with_excessive_five_min_consumption_during_this_time_window_of_day)):
                         return self.create_output(1, self.timestamp, df_cons_last_14_days) # Excessive time window consumption just detected.
                     else:
@@ -177,12 +177,19 @@ class Operator(OperatorBase):
                     return self.init_phase_handler.generate_init_msg(self.timestamp, init_value)
 
         
-    def create_df_cons_last_14_days(self):
+    def create_df_cons_last_14_days(self, days_with_excessive_five_min_consumption_during_this_time_window_of_day):
         ends_of_5min_slots_in_time_window = [timestamp for timestamp, _ in self.time_window_consumption_list_dict[str(self.last_time_window_start)] if 
                                              self.timestamp-timestamp < pd.Timedelta(14, "d")]
         time_window_5min_consumptions = [consumption for timestamp, consumption in self.time_window_consumption_list_dict[str(self.last_time_window_start)] if 
                                          self.timestamp-timestamp < pd.Timedelta(14, "d")]
-        df = pd.DataFrame(time_window_5min_consumptions, index=ends_of_5min_slots_in_time_window)
+        anomalies_check_list = []
+        for timestamp, _ in self.time_window_consumption_list_dict[str(self.last_time_window_start)]:
+            if self.timestamp-timestamp < pd.Timedelta(14, "d"):
+                if timestamp in list(chain.from_iterable(days_with_excessive_five_min_consumption_during_this_time_window_of_day)):
+                    anomalies_check_list.append(1)
+                else:
+                    anomalies_check_list.append(0)    
+        df = pd.DataFrame({0:time_window_5min_consumptions, 1:anomalies_check_list}, index=ends_of_5min_slots_in_time_window)
         print(df.reset_index(inplace=False).to_json(orient="values"))
         return df.reset_index(inplace=False).to_json(orient="values")
     
