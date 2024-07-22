@@ -27,4 +27,5 @@
 | `logger_level`           | str | default: "warning" |
 | `init_phase_length`           | int |  |
 | `init_phase_level`           | string | |
+
 Example: If init_phase_length is 14 and init_phase_level is "d" then the initial phase lasts 14 days.
