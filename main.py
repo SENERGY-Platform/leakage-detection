@@ -162,6 +162,7 @@ class Operator(OperatorBase):
                 self.update_time_window_consumption_list_dict()
                 if not operator_is_init:
                     if self.init_phase_handler.init_phase_needs_to_be_reset():
+                        self.consumption_same_five_min = [data] 
                         return self.init_phase_handler.reset_init_phase(init_value)
                     epsilon = self.determine_epsilon()
                     clustering_labels = self.create_clustering(epsilon)
