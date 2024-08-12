@@ -163,6 +163,7 @@ class Operator(OperatorBase):
                 if not operator_is_init:
                     if self.init_phase_handler.init_phase_needs_to_be_reset():
                         self.consumption_same_five_min = [data] 
+                        logger.debug(self.init_phase_handler.reset_init_phase(init_value))
                         return self.init_phase_handler.reset_init_phase(init_value)
                     epsilon = self.determine_epsilon()
                     clustering_labels = self.create_clustering(epsilon)
@@ -170,11 +171,14 @@ class Operator(OperatorBase):
                     self.consumption_same_five_min = [data] 
                     df_cons_last_14_days = self.create_df_cons_last_14_days(days_with_excessive_five_min_consumption_during_this_time_window_of_day)              
                     if self.timestamp in list(chain.from_iterable(days_with_excessive_five_min_consumption_during_this_time_window_of_day)):
+                        logger.debug(self.create_output(1, self.timestamp, df_cons_last_14_days))
                         return self.create_output(1, self.timestamp, df_cons_last_14_days) # Excessive time window consumption just detected.
                     else:
+                        logger.debug(self.create_output(0, self.timestamp, df_cons_last_14_days))
                         return self.create_output(0, self.timestamp, df_cons_last_14_days) # No excessive consumption just detected.
                 elif operator_is_init:
                     self.consumption_same_five_min = [data]
+                    logger.debug(self.init_phase_handler.generate_init_msg(self.timestamp, init_value))
                     return self.init_phase_handler.generate_init_msg(self.timestamp, init_value)
 
         
