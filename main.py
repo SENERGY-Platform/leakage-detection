@@ -200,7 +200,12 @@ class Operator(OperatorBase):
     
     def create_output(self, anomaly, timestamp, df_cons_last_14_days):
         if anomaly == 0:
-            message = ""
+            return {
+                    "value": anomaly,
+                    "timestamp": timestamp_to_str(timestamp),
+                    "last_consumptions": df_cons_last_14_days,
+                    "time_window": f'{str(self.last_time_window_start)}-{str((datetime.datetime.combine(datetime.date.today(), self.last_time_window_start) +datetime.timedelta(hours=1)).time())}'
+            }
         elif anomaly == 1:
             message = f'In den letzten 5 Minuten wurde übermäßig viel Wasser verbraucht.'
         return {
