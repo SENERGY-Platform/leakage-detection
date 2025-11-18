@@ -1,5 +1,5 @@
 FROM python:3.10
-LABEL org.opencontainers.image.source https://github.com/SENERGY-Platform/consumption_profile
+LABEL org.opencontainers.image.source https://github.com/SENERGY-Platform/leakage_detection
 WORKDIR /usr/src/app
 COPY . .
 RUN apt-get update && apt-get install -y git && apt-get install -y cmake
