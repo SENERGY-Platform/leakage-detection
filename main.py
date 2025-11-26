@@ -28,6 +28,9 @@ from itertools import chain
 import datetime
 from collections import defaultdict
 
+import typing
+import datetime
+
 from operator_lib.util import Config
 class CustomConfig(Config):
     data_path = "/opt/data"
@@ -132,8 +135,12 @@ class Operator(OperatorBase):
 
         return [self.time_window_consumption_list_dict[str(self.last_time_window_start)][i] for i in anomalous_indices_high]
     
-    def run(self, data, selector='energy_func', device_id=''):
-        self.timestamp = todatetime(data['Time']).tz_localize(None)
+    def run(self, data: typing.Dict[str, typing.Any], selector: str, device_id, timestamp: datetime.datetime):
+        # Convert to german time and then forget the timezone.
+        self.timestamp = pd.Timestamp(timestamp).tz_localize("Zulu").tz_convert("Europe/Berlin").tz_localize(None)
+
+        data = {'Consumption': data['Consumption'], 'Time': self.timestamp}
+
         if not self.first_data_time:
             self.first_data_time = self.timestamp
             self.init_phase_handler = InitPhase(self.data_path, self.init_phase_duration, self.first_data_time, self.produce)
@@ -155,7 +162,7 @@ class Operator(OperatorBase):
             self.consumption_same_five_min.append(data)
             return
         elif self.consumption_same_five_min != []:
-            if self.current_five_min==todatetime(self.consumption_same_five_min[-1]['Time']).tz_localize(None).floor('5T'):
+            if self.current_five_min==self.consumption_same_five_min[-1]['Time'].floor('5T'):
                 self.consumption_same_five_min.append(data)
                 return
             else:
