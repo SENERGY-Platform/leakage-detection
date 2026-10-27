@@ -136,8 +136,10 @@ class Operator(OperatorBase):
         return [self.time_window_consumption_list_dict[str(self.last_time_window_start)][i] for i in anomalous_indices_high]
     
     def run(self, data: typing.Dict[str, typing.Any], selector: str, device_id, timestamp: datetime.datetime):
-        # Convert to german time and then forget the timezone.
-        self.timestamp = pd.Timestamp(timestamp).tz_convert("Europe/Berlin").tz_localize(None)
+        # Convert to german time and then forget the timezone. The time windows are of the local
+        # day; the output carries the UTC time, since the export reads it as UTC.
+        utc = pd.Timestamp(timestamp).tz_convert("UTC")
+        self.timestamp = utc.tz_convert("Europe/Berlin").tz_localize(None)
 
         data = {'Consumption': data['Consumption'], 'Time': self.timestamp}
 
@@ -151,7 +153,7 @@ class Operator(OperatorBase):
         
         init_value = {
                     "value": 0,
-                    "timestamp": timestamp_to_str(self.timestamp),
+                    "timestamp": timestamp_to_str(utc),
                     "message": "",
                     "last_consumptions": "",
                     "time_window": ""
@@ -178,11 +180,11 @@ class Operator(OperatorBase):
                     self.consumption_same_five_min = [data] 
                     df_cons_last_14_days = self.create_df_cons_last_14_days(days_with_excessive_five_min_consumption_during_this_time_window_of_day)              
                     if self.timestamp in list(chain.from_iterable(days_with_excessive_five_min_consumption_during_this_time_window_of_day)):
-                        logger.debug(self.create_output(1, self.timestamp, df_cons_last_14_days))
-                        return self.create_output(1, self.timestamp, df_cons_last_14_days) # Excessive time window consumption just detected.
+                        logger.debug(self.create_output(1, utc, df_cons_last_14_days))
+                        return self.create_output(1, utc, df_cons_last_14_days) # Excessive time window consumption just detected.
                     else:
-                        logger.debug(self.create_output(0, self.timestamp, df_cons_last_14_days))
-                        return self.create_output(0, self.timestamp, df_cons_last_14_days) # No excessive consumption just detected.
+                        logger.debug(self.create_output(0, utc, df_cons_last_14_days))
+                        return self.create_output(0, utc, df_cons_last_14_days) # No excessive consumption just detected.
                 elif operator_is_init:
                     self.consumption_same_five_min = [data]
                     logger.debug(self.init_phase_handler.generate_init_msg(self.timestamp, init_value))
