@@ -44,13 +44,13 @@ class TestOutputTimestamp(unittest.TestCase):
 
     def test_the_output_carries_the_utc_time_in_winter(self):
         start = datetime.datetime(2026, 10, 27, 8, 0, 30, tzinfo=datetime.timezone.utc)
-        results = self.results(start, 7)
-        self.assertEqual(["2026-10-27T08:05:30.000Z"], [r["timestamp"] for r in results])
+        results = self.results(start, 12)
+        self.assertEqual(["2026-10-27T08:10:30.000Z"], [r["timestamp"] for r in results])
 
     def test_the_output_carries_the_utc_time_in_summer(self):
         start = datetime.datetime(2026, 7, 1, 8, 0, 30, tzinfo=datetime.timezone.utc)
-        results = self.results(start, 7)
-        self.assertEqual(["2026-07-01T08:05:30.000Z"], [r["timestamp"] for r in results])
+        results = self.results(start, 12)
+        self.assertEqual(["2026-07-01T08:10:30.000Z"], [r["timestamp"] for r in results])
 
 
 if __name__ == '__main__':

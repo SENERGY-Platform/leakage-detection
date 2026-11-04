@@ -33,8 +33,15 @@ import datetime
 
 from operator_lib.util import Config
 
+# The consumption is judged per slot of five minutes, against the slots of the same hour of the day in German time.
+SLOT = pd.Timedelta(5, 'min')
+TIMEZONE = 'Europe/Berlin'
 # The slots an hour of the day needs before it is judged: the size of a cluster.
 MIN_SLOTS = 10
+# The slots of each hour of the day are kept this long.
+HISTORY_LENGTH = pd.Timedelta(28, 'd')
+# Between two readings further apart the course of the consumption is not known, so no slot is derived from them.
+MAX_GAP = pd.Timedelta(2, 'h')
 
 
 class CustomConfig(Config):
@@ -70,40 +77,54 @@ class Operator(OperatorBase):
         # initial phase is not known yet. The first judged slot announces the initial phase.
         self.init_phase_handler = InitPhase(self.data_path, self.init_phase_duration, self.first_data_time, self.produce)
 
-        self.time_window_consumption_list_dict = defaultdict(list)
-        self.time_window_consumption_list_dict_anomalies = defaultdict(list)
-
-        self.window_boundaries_times =  [datetime.time(0, 0), datetime.time(1, 0), datetime.time(2, 0), datetime.time(3, 0), datetime.time(4, 0), datetime.time(5, 0), datetime.time(6, 0),
-                                         datetime.time(7, 0), datetime.time(8, 0), datetime.time(9, 0), datetime.time(10, 0), datetime.time(11, 0), datetime.time(12, 0), datetime.time(13, 0), 
-                                         datetime.time(14, 0), datetime.time(15, 0), datetime.time(16, 0), datetime.time(17, 0), datetime.time(18, 0), datetime.time(19, 0), datetime.time(20, 0),
-                                         datetime.time(21, 0), datetime.time(22, 0), datetime.time(23, 0), datetime.time(23, 59, 59, 999000)]
-                                      
-
-
-
-        self.consumption_same_five_min = []
-
         self.time_window_consumption_clustering = {}
 
+        # Per hour of the day: (end of the slot in German time, litres), oldest first.
         self.time_window_consumption_list_dict = load(self.data_path, "time_window_consumption_list_dict.pickle", default=defaultdict(list))
         self.time_window_consumption_list_dict_anomalies = load(self.data_path, "time_window_consumption_list_dict_anomaly.pickle", default=defaultdict(list))
 
-    def update_time_window_consumption_list_dict(self):
-        min_index = np.argmin([float(datapoint['Consumption']) for datapoint in self.consumption_same_five_min])
-        max_index = np.argmax([float(datapoint['Consumption']) for datapoint in self.consumption_same_five_min])
-        five_min_consumption_max = float(self.consumption_same_five_min[max_index]['Consumption'])
-        five_min_consumption_min = float(self.consumption_same_five_min[min_index]['Consumption'])
-        overall_five_min_consumption = 1000*(five_min_consumption_max-five_min_consumption_min)
-        if [time for time in self.window_boundaries_times if time<self.current_five_min.time()]==[]:
-            self.last_time_window_start = self.window_boundaries_times[-2]
-        else:
-            self.last_time_window_start = max(time for time in self.window_boundaries_times if time<self.current_five_min.time())
-        self.time_window_consumption_list_dict[str(self.last_time_window_start)].append((self.timestamp, overall_five_min_consumption))
-        for i, entry in enumerate(self.time_window_consumption_list_dict[str(self.last_time_window_start)]):
-            if self.timestamp-entry[0] > pd.Timedelta(28,'d'):
-                del self.time_window_consumption_list_dict[str(self.last_time_window_start)][i]
-        save(self.data_path, "time_window_consumption_list_dict.pickle", self.time_window_consumption_list_dict)
-        return
+        # The last meter reading and the start of the open slot with the reading there, each as (UTC time, reading).
+        self.last_reading = None
+        self.slot_start = None
+
+    def add_reading(self, at, reading):
+        # Adds the meter reading at the UTC time `at` and returns the slots it completes, as (hour, entry). The
+        # reading at a slot boundary is interpolated linearly between the readings around it: so a slot gets the
+        # consumption of its own five minutes, whatever the rate the meter reports at, and none is lost.
+        completed = []
+        if self.last_reading is not None:
+            last_at, last_value = self.last_reading
+            if at <= last_at:
+                # A repeated or late reading: the slots up to the last reading are derived already.
+                return completed
+            if at - last_at > MAX_GAP or reading < last_value:
+                # Across a long gap the course of the consumption is not known, and a falling reading means a new
+                # meter: the open slot is left out.
+                self.slot_start = None
+            else:
+                boundary = last_at.floor(SLOT) + SLOT
+                while boundary <= at:
+                    value = last_value + (reading - last_value) * ((boundary - last_at) / (at - last_at))
+                    if self.slot_start is not None:
+                        start, start_value = self.slot_start
+                        completed.append(self.add_slot(start, boundary, 1000 * (value - start_value)))
+                    self.slot_start = (boundary, value)
+                    boundary += SLOT
+        if self.slot_start is None and at == at.floor(SLOT):
+            self.slot_start = (at, reading)
+        self.last_reading = (at, reading)
+        return completed
+
+    def add_slot(self, start, end, litres):
+        # The slot belongs to the hour of the day in German time it starts in. Slots older than the history length
+        # are dropped from that hour; the times grow, so they are the first ones.
+        hour = datetime.time(start.tz_convert(TIMEZONE).hour)
+        entry = (end.tz_convert(TIMEZONE).tz_localize(None), litres)
+        entries = self.time_window_consumption_list_dict[str(hour)]
+        entries.append(entry)
+        while entry[0] - entries[0][0] > HISTORY_LENGTH:
+            entries.pop(0)
+        return hour, entry
 
     def determine_epsilon(self):
         neighbors = NearestNeighbors(n_neighbors=5)
@@ -138,9 +159,7 @@ class Operator(OperatorBase):
         # Convert to german time and then forget the timezone. The time windows are of the local
         # day; the output carries the UTC time, since the export reads it as UTC.
         utc = pd.Timestamp(timestamp).tz_convert("UTC")
-        self.timestamp = utc.tz_convert("Europe/Berlin").tz_localize(None)
-
-        data = {'Consumption': data['Consumption'], 'Time': self.timestamp}
+        self.timestamp = utc.tz_convert(TIMEZONE).tz_localize(None)
 
         if not self.first_data_time:
             self.first_data_time = self.timestamp
@@ -158,43 +177,39 @@ class Operator(OperatorBase):
                     "time_window": ""
         }
 
-        self.current_five_min = self.timestamp.floor('5T')
-        if self.consumption_same_five_min == []:
-            self.consumption_same_five_min.append(data)
+        completed = self.add_reading(utc, float(data['Consumption']))
+        if not completed:
             return
-        elif self.consumption_same_five_min != []:
-            if self.current_five_min==self.consumption_same_five_min[-1]['Time'].floor('5T'):
-                self.consumption_same_five_min.append(data)
-                return
-            else:
-                self.update_time_window_consumption_list_dict()
-                if not operator_is_init:
-                    if self.init_phase_handler.init_phase_needs_to_be_reset():
-                        self.consumption_same_five_min = [data] 
-                        logger.debug(self.init_phase_handler.reset_init_phase(init_value))
-                        return self.init_phase_handler.reset_init_phase(init_value)
-                    if len(self.time_window_consumption_list_dict[str(self.last_time_window_start)]) < MIN_SLOTS:
-                        # Below the size of a cluster every slot is an outlier, and below five the neighbours
-                        # cannot even be determined.
-                        self.consumption_same_five_min = [data]
-                        return self.create_output(0, utc, self.create_df_cons_last_14_days([]))
-                    epsilon = self.determine_epsilon()
-                    clustering_labels = self.create_clustering(epsilon)
-                    days_with_excessive_five_min_consumption_during_this_time_window_of_day = self.test_time_window_consumption(clustering_labels)
-                    self.consumption_same_five_min = [data] 
-                    df_cons_last_14_days = self.create_df_cons_last_14_days(days_with_excessive_five_min_consumption_during_this_time_window_of_day)              
-                    if self.timestamp in list(chain.from_iterable(days_with_excessive_five_min_consumption_during_this_time_window_of_day)):
-                        logger.debug(self.create_output(1, utc, df_cons_last_14_days))
-                        return self.create_output(1, utc, df_cons_last_14_days) # Excessive time window consumption just detected.
-                    else:
-                        logger.debug(self.create_output(0, utc, df_cons_last_14_days))
-                        return self.create_output(0, utc, df_cons_last_14_days) # No excessive consumption just detected.
-                elif operator_is_init:
-                    self.consumption_same_five_min = [data]
-                    logger.debug(self.init_phase_handler.generate_init_msg(self.timestamp, init_value))
-                    return self.init_phase_handler.generate_init_msg(self.timestamp, init_value)
+        save(self.data_path, "time_window_consumption_list_dict.pickle", self.time_window_consumption_list_dict)
+        if operator_is_init:
+            output = self.init_phase_handler.generate_init_msg(self.timestamp, init_value)
+        elif self.init_phase_handler.init_phase_needs_to_be_reset():
+            output = self.init_phase_handler.reset_init_phase(init_value)
+        else:
+            # A reading of a meter that reports seldom can complete several slots, even of two hours. They are all
+            # judged; the output shows the hour of the last one and reports any excessive one.
+            anomaly = 0
+            for hour in dict.fromkeys(hour for hour, _ in completed):
+                self.last_time_window_start = hour
+                days_with_excessive_five_min_consumption_during_this_time_window_of_day = self.judge_time_window()
+                if any(entry in days_with_excessive_five_min_consumption_during_this_time_window_of_day
+                       for slot_hour, entry in completed if slot_hour == hour):
+                    anomaly = 1
+            df_cons_last_14_days = self.create_df_cons_last_14_days(days_with_excessive_five_min_consumption_during_this_time_window_of_day)
+            output = self.create_output(anomaly, utc, df_cons_last_14_days)
+        logger.debug(output)
+        return output
 
-        
+    def judge_time_window(self):
+        # The excessive slots of the hour self.last_time_window_start.
+        if len(self.time_window_consumption_list_dict[str(self.last_time_window_start)]) < MIN_SLOTS:
+            # Below the size of a cluster every slot is an outlier, and below five the neighbours cannot even be
+            # determined.
+            return []
+        epsilon = self.determine_epsilon()
+        clustering_labels = self.create_clustering(epsilon)
+        return self.test_time_window_consumption(clustering_labels)
+
     def create_df_cons_last_14_days(self, days_with_excessive_five_min_consumption_during_this_time_window_of_day):
         ends_of_5min_slots_in_time_window = [timestamp for timestamp, _ in self.time_window_consumption_list_dict[str(self.last_time_window_start)] if 
                                              self.timestamp-timestamp < pd.Timedelta(14, "d")]
