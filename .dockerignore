@@ -1,0 +1,5 @@
+# .git stays: the build records the commit from it.
+.env
+.venv
+**/__pycache__
+data

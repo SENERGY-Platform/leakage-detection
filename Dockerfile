@@ -1,10 +1,11 @@
-FROM python:3.10
-LABEL org.opencontainers.image.source https://github.com/SENERGY-Platform/leakage_detection
+FROM python:3.10.20-slim
+LABEL org.opencontainers.image.source https://github.com/SENERGY-Platform/leakage-detection
 WORKDIR /usr/src/app
-COPY . .
-RUN apt-get update && apt-get install -y git && apt-get install -y cmake
-RUN apt-get install -y gfortran
-RUN git log -1 --pretty=format:"commit=%H%ndate=%cd%n" > git_commit
+# git installs the operator library and records the commit of the build.
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+# The dependencies before the code, so that a change of the code reuses their layer.
+COPY requirements.txt .
 RUN python3 -m pip install --no-cache-dir -r requirements.txt
-RUN apt-get purge -y git && apt-get auto-remove -y && apt-get clean && rm -rf .git
+COPY . .
+RUN git log -1 --pretty=format:"commit=%H%ndate=%cd%n" > git_commit && rm -rf .git && apt-get purge -y git && apt-get autoremove -y
 CMD [ "python3", "-u", "main.py"]
