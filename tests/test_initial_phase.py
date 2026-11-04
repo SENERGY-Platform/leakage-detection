@@ -32,9 +32,10 @@ class TestInitialPhase(unittest.TestCase):
     def start(self):
         operator = Operator()
         operator.produce = self.sent.append
+        operator.data_path = self.dir.name
         with Timescale().patched():
             operator.init(None, None, None, None, None, None,
-                          config=CustomConfig({"data_path": self.dir.name, "init_phase_length": "2",
+                          config=CustomConfig({"init_phase_length": "2",
                                                "init_phase_level": "d"}))
         return operator
 

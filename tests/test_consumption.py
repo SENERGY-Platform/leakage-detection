@@ -47,9 +47,10 @@ class TestConsumption(unittest.TestCase):
         # the slots kept per hour of the day, by their end in German time; in the initial phase, so nothing is judged
         operator = Operator()
         operator.produce = lambda value: None
+        operator.data_path = self.dir.name
         with Timescale().patched():
             operator.init(None, None, None, None, None, None,
-                          config=CustomConfig({"data_path": self.dir.name, "init_phase_length": "60",
+                          config=CustomConfig({"init_phase_length": "60",
                                                "init_phase_level": "d"}))
         for time, reading in readings:
             operator.run({"Consumption": reading}, "", "device", time)

@@ -43,3 +43,5 @@ During the initial phase, and in the output that ends it, `value` is 0 and `mess
 | `init_phase_level` | string | Unit of `init_phase_length` as a pandas Timedelta unit, e.g. "d" or "h". default: "d" |
 
 Example: If init_phase_length is 14 and init_phase_level is "d" then the initial phase lasts 14 days.
+
+The operator keeps the start of its initial phase in `/opt/data`, which should be a volume. `operator-manifest.json` declares the inputs, outputs and config options; it is generated from `main.py` with `python -m operator_lib manifest main.py`.

@@ -33,7 +33,7 @@ from collections import defaultdict
 import typing
 import datetime
 
-from operator_lib.util import Config
+from operator_lib.util import Config, Inputs, Outputs
 
 # The consumption is judged per slot of five minutes, against the slots of the same hour of the day in German time.
 SLOT = pd.Timedelta(5, 'min')
@@ -47,9 +47,10 @@ MAX_GAP = pd.Timedelta(2, 'h')
 
 
 class CustomConfig(Config):
-    data_path = "/opt/data"
     init_phase_length: float = 2
     init_phase_level: str = "d"
+    # A field of the library, declared again so that flows can set it.
+    logger_level: str = "warning"
 
     def __init__(self, d, **kwargs):
         super().__init__(d, **kwargs)
@@ -61,13 +62,28 @@ class CustomConfig(Config):
         if self.init_phase_level == '':
             self.init_phase_level = 'd'
 
+# The time of a reading is the time of its Kafka message, so there is no input for it.
+class LeakageInputs(Inputs):
+    Consumption: float
+
+class LeakageOutputs(Outputs):
+    value: int
+    timestamp: str
+    message: str
+    last_consumptions: str
+    time_window: str
+    initial_phase: str
+
 class Operator(OperatorBase):
     configType = CustomConfig
+    inputs = LeakageInputs
+    outputs = LeakageOutputs
+    # Where the start of the initial phase is kept, the volume of the deployment; not a config value, which a flow
+    # could change.
+    data_path = "/opt/data"
 
     def init(self, *args, **kwargs):
         super().init(*args, **kwargs)
-        self.data_path = self.config.data_path
-
         if not os.path.exists(self.data_path):
             os.mkdir(self.data_path)
 
@@ -83,7 +99,7 @@ class Operator(OperatorBase):
         for at, reading in history:
             self.add_reading(at, reading)
 
-        self.first_data_time = load(self.config.data_path, "first_data_time.pickle")
+        self.first_data_time = load(self.data_path, "first_data_time.pickle")
         if history:
             first = history[0][0].tz_convert(TIMEZONE).tz_localize(None)
             if not self.first_data_time or first < self.first_data_time:

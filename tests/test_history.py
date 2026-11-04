@@ -54,9 +54,10 @@ class TestHistory(unittest.TestCase):
         self.dirs.append(directory)
         operator = Operator()
         operator.produce = lambda value: None
+        operator.data_path = directory.name
         with reader or self.timescale.patched() as self.read:
             operator.init(None, None, None, None, None, None,
-                          config=CustomConfig({"data_path": directory.name, "init_phase_length": init_phase_length,
+                          config=CustomConfig({"init_phase_length": init_phase_length,
                                                "init_phase_level": "d"}))
         return operator
 

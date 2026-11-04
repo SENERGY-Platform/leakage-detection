@@ -1,0 +1,48 @@
+{
+  "inputs": [
+    {
+      "name": "Consumption",
+      "type": "float"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "value",
+      "type": "int"
+    },
+    {
+      "name": "timestamp",
+      "type": "string"
+    },
+    {
+      "name": "message",
+      "type": "string"
+    },
+    {
+      "name": "last_consumptions",
+      "type": "string"
+    },
+    {
+      "name": "time_window",
+      "type": "string"
+    },
+    {
+      "name": "initial_phase",
+      "type": "string"
+    }
+  ],
+  "config_values": [
+    {
+      "name": "init_phase_length",
+      "type": "float"
+    },
+    {
+      "name": "init_phase_level",
+      "type": "string"
+    },
+    {
+      "name": "logger_level",
+      "type": "string"
+    }
+  ]
+}

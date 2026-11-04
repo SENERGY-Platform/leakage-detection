@@ -35,9 +35,10 @@ class TestJudgement(unittest.TestCase):
         # without an initial phase, so that every slot of the first hour is judged
         operator = Operator()
         operator.produce = lambda value: None
+        operator.data_path = self.dir.name
         with Timescale().patched():
             operator.init(None, None, None, None, None, None,
-                          config=CustomConfig({"data_path": self.dir.name, "init_phase_length": "0",
+                          config=CustomConfig({"init_phase_length": "0",
                                                "init_phase_level": "d"}))
         return operator
 
