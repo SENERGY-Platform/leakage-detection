@@ -11,6 +11,8 @@ Reports a water consumption within five minutes that is far higher than in the s
 - **History:** At every start the operator reads the readings of the last 28 days from Timescale and derives the slots from them, so a restart or a new volume loses nothing. This needs a database connection (`TS_CONN` in the environment or `ts_conn` in the config); without one, or for an input whose history only Kafka has, it starts without history and logs a warning.
 - **Initial phase:** Counts from the first value of the history, or from the first value received. A history as long as the initial phase ends it at once.
 
+Design decisions and their reasons are in [docs/](docs/).
+
 ## Input
 
 | key | type | description |
