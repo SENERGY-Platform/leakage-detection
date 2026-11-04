@@ -44,4 +44,4 @@ During the initial phase, and in the output that ends it, `value` is 0 and `mess
 
 Example: If init_phase_length is 14 and init_phase_level is "d" then the initial phase lasts 14 days.
 
-The operator keeps the start of its initial phase in `/opt/data`, which should be a volume. `operator-manifest.json` declares the inputs, outputs and config options; it is generated from `main.py` with `python -m operator_lib manifest main.py`.
+The operator keeps the start of its initial phase in `/opt/data`, which should be a volume. `operator-manifest.json` declares the inputs, outputs and config options; the CI regenerates it from `main.py` with `python -m operator_lib manifest main.py` before each release.
