@@ -14,7 +14,9 @@
    limitations under the License.
 """
 
+import contextlib
 import datetime
+import io
 import tempfile
 import unittest
 
@@ -64,6 +66,13 @@ class TestJudgement(unittest.TestCase):
     def test_raises_an_alarm_for_a_slot_far_above_the_others_of_its_hour(self):
         results = self.judgements([1.0, 1.2, 1.1, 0.9, 1.0, 1.2, 1.1, 0.9, 1.0, 1.2, 1.1, 50.0, 1.0])
         self.assertEqual(1, results[-1])
+
+    def test_writes_nothing_to_standard_output(self):
+        # what is worth seeing goes through the logger, whose level the config sets
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.judgements([1.0, 1.2, 1.1, 0.9, 1.0, 1.2, 1.1, 0.9, 1.0, 1.2, 1.1, 50.0, 1.0])
+        self.assertEqual("", output.getvalue())
 
     def test_raises_an_alarm_for_an_excessive_slot_of_the_hour_before_the_one_a_reading_ends_in(self):
         # after 10:56:30 German time the meter pauses; its next reading completes the last slot of that hour, which

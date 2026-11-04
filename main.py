@@ -260,7 +260,6 @@ class Operator(OperatorBase):
                 else:
                     anomalies_check_list.append(0)    
         df = pd.DataFrame({0:time_window_5min_consumptions, 1:anomalies_check_list}, index=ends_of_5min_slots_in_time_window)
-        print(df.reset_index(inplace=False).to_json(orient="values"))
         return df.reset_index(inplace=False).to_json(orient="values")
     
     def create_output(self, anomaly, timestamp, df_cons_last_14_days):
