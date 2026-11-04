@@ -18,6 +18,7 @@ import datetime
 import tempfile
 import unittest
 
+from fake_timescale import Timescale
 from main import CustomConfig, Operator
 
 
@@ -46,9 +47,10 @@ class TestConsumption(unittest.TestCase):
         # the slots kept per hour of the day, by their end in German time; in the initial phase, so nothing is judged
         operator = Operator()
         operator.produce = lambda value: None
-        operator.init(None, None, None, None, None, None,
-                      config=CustomConfig({"data_path": self.dir.name, "init_phase_length": "60",
-                                           "init_phase_level": "d"}))
+        with Timescale().patched():
+            operator.init(None, None, None, None, None, None,
+                          config=CustomConfig({"data_path": self.dir.name, "init_phase_length": "60",
+                                               "init_phase_level": "d"}))
         for time, reading in readings:
             operator.run({"Consumption": reading}, "", "device", time)
         return {hour: [(end.strftime("%Y-%m-%d %H:%M"), round(litres, 6)) for end, litres in entries]

@@ -18,6 +18,8 @@ __all__ = ("Operator", )
 
 from operator_lib.util import OperatorBase, logger, InitPhase, todatetime, timestamp_to_str
 from operator_lib.util.persistence import save, load
+from operator_lib.util.config import MissingConfigValueError
+from operator_lib.util.helpers import provide_historic_frames_local, HistoryNeedsRayError
 import pandas as pd
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
@@ -69,7 +71,25 @@ class Operator(OperatorBase):
         if not os.path.exists(self.data_path):
             os.mkdir(self.data_path)
 
+        self.time_window_consumption_clustering = {}
+
+        # Per hour of the day: (end of the slot in German time, litres), oldest first. Like everything derived from
+        # the meter readings not kept: it is rebuilt from the history at every start.
+        self.time_window_consumption_list_dict = defaultdict(list)
+        # The last meter reading and the start of the open slot with the reading there, each as (UTC time, reading).
+        self.last_reading = None
+        self.slot_start = None
+        history = self.read_history()
+        for at, reading in history:
+            self.add_reading(at, reading)
+
         self.first_data_time = load(self.config.data_path, "first_data_time.pickle")
+        if history:
+            first = history[0][0].tz_convert(TIMEZONE).tz_localize(None)
+            if not self.first_data_time or first < self.first_data_time:
+                # The initial phase counts from the first value of the history, so a history of its length ends it at once.
+                self.first_data_time = first
+                save(self.data_path, "first_data_time.pickle", self.first_data_time)
 
         self.init_phase_duration = pd.Timedelta(self.config.init_phase_length, self.config.init_phase_level)
 
@@ -77,15 +97,19 @@ class Operator(OperatorBase):
         # initial phase is not known yet. The first judged slot announces the initial phase.
         self.init_phase_handler = InitPhase(self.data_path, self.init_phase_duration, self.first_data_time, self.produce)
 
-        self.time_window_consumption_clustering = {}
-
-        # Per hour of the day: (end of the slot in German time, litres), oldest first.
-        self.time_window_consumption_list_dict = load(self.data_path, "time_window_consumption_list_dict.pickle", default=defaultdict(list))
-        self.time_window_consumption_list_dict_anomalies = load(self.data_path, "time_window_consumption_list_dict_anomaly.pickle", default=defaultdict(list))
-
-        # The last meter reading and the start of the open slot with the reading there, each as (UTC time, reading).
-        self.last_reading = None
-        self.slot_start = None
+    def read_history(self):
+        # Timescale is the only source of the history: it is read at every start and extended live, so a restart or a
+        # new volume loses nothing. Any other failure of the read fails the start, and the platform starts it again.
+        try:
+            frames = provide_historic_frames_local(HISTORY_LENGTH)
+        except (HistoryNeedsRayError, MissingConfigValueError) as e:
+            logger.warning(f'Starting without history: {e}')
+            return []
+        if len(frames) != 1 or 'device_id' in frames[0].columns:
+            logger.warning('Starting without history: the consumption comes from more than one input or device')
+            return []
+        frame = frames[0].dropna(subset=['Consumption']).sort_values('time', kind='stable')
+        return list(zip(pd.to_datetime(frame['time'], utc=True), frame['Consumption'].astype(float)))
 
     def add_reading(self, at, reading):
         # Adds the meter reading at the UTC time `at` and returns the slots it completes, as (hour, entry). The
@@ -150,8 +174,6 @@ class Operator(OperatorBase):
         anomalous_indices_high = [i for i in anomalous_indices if self.time_window_consumption_list_dict[str(self.last_time_window_start)][i][1] > quantile]
         if len(self.time_window_consumption_list_dict[str(self.last_time_window_start)])-1 in anomalous_indices_high:
             logger.warning(f'In den letzten 5 Minuten wurde ungewöhnlich viel verbraucht.')
-            self.time_window_consumption_list_dict_anomalies[str(self.last_time_window_start)].append(self.time_window_consumption_list_dict[str(self.last_time_window_start)][-1])
-        save(self.data_path, "time_window_consumption_list_dict_anomaly.pickle", self.time_window_consumption_list_dict_anomalies)
 
         return [self.time_window_consumption_list_dict[str(self.last_time_window_start)][i] for i in anomalous_indices_high]
     
@@ -180,7 +202,6 @@ class Operator(OperatorBase):
         completed = self.add_reading(utc, float(data['Consumption']))
         if not completed:
             return
-        save(self.data_path, "time_window_consumption_list_dict.pickle", self.time_window_consumption_list_dict)
         if operator_is_init:
             output = self.init_phase_handler.generate_init_msg(self.timestamp, init_value)
         elif self.init_phase_handler.init_phase_needs_to_be_reset():

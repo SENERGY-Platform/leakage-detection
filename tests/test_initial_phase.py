@@ -17,6 +17,7 @@
 import tempfile
 import unittest
 
+from fake_timescale import Timescale
 from main import CustomConfig, Operator
 
 
@@ -31,9 +32,10 @@ class TestInitialPhase(unittest.TestCase):
     def start(self):
         operator = Operator()
         operator.produce = self.sent.append
-        operator.init(None, None, None, None, None, None,
-                      config=CustomConfig({"data_path": self.dir.name, "init_phase_length": "2",
-                                           "init_phase_level": "d"}))
+        with Timescale().patched():
+            operator.init(None, None, None, None, None, None,
+                          config=CustomConfig({"data_path": self.dir.name, "init_phase_length": "2",
+                                               "init_phase_level": "d"}))
         return operator
 
     def test_sends_nothing_before_the_first_value(self):

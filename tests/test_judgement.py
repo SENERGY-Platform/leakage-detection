@@ -18,6 +18,7 @@ import datetime
 import tempfile
 import unittest
 
+from fake_timescale import Timescale
 from main import CustomConfig, Operator
 
 START = datetime.datetime(2026, 7, 1, 8, 0, 30, tzinfo=datetime.timezone.utc)
@@ -34,9 +35,10 @@ class TestJudgement(unittest.TestCase):
         # without an initial phase, so that every slot of the first hour is judged
         operator = Operator()
         operator.produce = lambda value: None
-        operator.init(None, None, None, None, None, None,
-                      config=CustomConfig({"data_path": self.dir.name, "init_phase_length": "0",
-                                           "init_phase_level": "d"}))
+        with Timescale().patched():
+            operator.init(None, None, None, None, None, None,
+                          config=CustomConfig({"data_path": self.dir.name, "init_phase_length": "0",
+                                               "init_phase_level": "d"}))
         return operator
 
     def judgements(self, litres_per_slot):
@@ -72,7 +74,6 @@ class TestJudgement(unittest.TestCase):
         results = [result for at, reading in readings
                    if (result := operator.run({"Consumption": reading}, "", "device", at)) is not None]
         self.assertEqual(("11:00:00-12:00:00", 1), (results[-1]["time_window"], results[-1]["value"]))
-
 
 
 if __name__ == '__main__':

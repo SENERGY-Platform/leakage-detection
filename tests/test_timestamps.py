@@ -18,6 +18,7 @@ import datetime
 import tempfile
 import unittest
 
+from fake_timescale import Timescale
 from main import CustomConfig, Operator
 
 
@@ -26,9 +27,10 @@ class TestOutputTimestamp(unittest.TestCase):
         self.dir = tempfile.TemporaryDirectory()
         self.operator = Operator()
         self.operator.produce = lambda value: None
-        self.operator.init(None, None, None, None, None, None,
-                           config=CustomConfig({"data_path": self.dir.name, "init_phase_length": "7",
-                                                "init_phase_level": "d"}))
+        with Timescale().patched():
+            self.operator.init(None, None, None, None, None, None,
+                               config=CustomConfig({"data_path": self.dir.name, "init_phase_length": "7",
+                                                    "init_phase_level": "d"}))
 
     def tearDown(self):
         self.dir.cleanup()
