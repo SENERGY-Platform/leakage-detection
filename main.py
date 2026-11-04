@@ -32,6 +32,11 @@ import typing
 import datetime
 
 from operator_lib.util import Config
+
+# The slots an hour of the day needs before it is judged: the size of a cluster.
+MIN_SLOTS = 10
+
+
 class CustomConfig(Config):
     data_path = "/opt/data"
     init_phase_length: float = 2
@@ -114,7 +119,7 @@ class Operator(OperatorBase):
             return epsilon
 
     def create_clustering(self, epsilon):
-        self.time_window_consumption_clustering[str(self.last_time_window_start)] = DBSCAN(eps=epsilon, min_samples=10).fit(np.array([five_min_consumption 
+        self.time_window_consumption_clustering[str(self.last_time_window_start)] = DBSCAN(eps=epsilon, min_samples=MIN_SLOTS).fit(np.array([five_min_consumption 
                                                                      for _, five_min_consumption in self.time_window_consumption_list_dict[str(self.last_time_window_start)]]).reshape(-1,1))
         return self.time_window_consumption_clustering[str(self.last_time_window_start)].labels_
     
@@ -168,6 +173,11 @@ class Operator(OperatorBase):
                         self.consumption_same_five_min = [data] 
                         logger.debug(self.init_phase_handler.reset_init_phase(init_value))
                         return self.init_phase_handler.reset_init_phase(init_value)
+                    if len(self.time_window_consumption_list_dict[str(self.last_time_window_start)]) < MIN_SLOTS:
+                        # Below the size of a cluster every slot is an outlier, and below five the neighbours
+                        # cannot even be determined.
+                        self.consumption_same_five_min = [data]
+                        return self.create_output(0, utc, self.create_df_cons_last_14_days([]))
                     epsilon = self.determine_epsilon()
                     clustering_labels = self.create_clustering(epsilon)
                     days_with_excessive_five_min_consumption_during_this_time_window_of_day = self.test_time_window_consumption(clustering_labels)
