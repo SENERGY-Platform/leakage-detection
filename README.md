@@ -39,7 +39,7 @@ During the initial phase, and in the output that ends it, `value` is 0 and `mess
 | key | type | description |
 |--------------------|-------------|-----------------------------------------------------------|
 | `logger_level` | str | default: "warning" |
-| `init_phase_length` | float | Length of the initial phase in units of `init_phase_level`. default: 2; an empty value means 14. |
+| `init_phase_length` | float | Length of the initial phase in units of `init_phase_level`. default: 2 |
 | `init_phase_level` | string | Unit of `init_phase_length` as a pandas Timedelta unit, e.g. "d" or "h". default: "d" |
 
 Example: If init_phase_length is 14 and init_phase_level is "d" then the initial phase lasts 14 days.

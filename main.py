@@ -56,7 +56,7 @@ class CustomConfig(Config):
         if self.init_phase_length != '':
             self.init_phase_length = float(self.init_phase_length)
         else:
-            self.init_phase_length = 14
+            self.init_phase_length = 2
         
         if self.init_phase_level == '':
             self.init_phase_level = 'd'
