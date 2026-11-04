@@ -2,7 +2,7 @@ name: 'PROD build'
 
 # main builds :prod as before plus :vX.Y.Z; a release/vN branch keeps an older major
 # alive and builds only its :vN.x.y. The git tag is pushed after the image, so a failed
-# build never consumes a version.
+# build never consumes a version. Nothing is built unless the tests pass.
 on:
   push:
     branches:
@@ -11,7 +11,22 @@ on:
   workflow_dispatch:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Test
+        run: python -m unittest discover -s tests
+
   multi:
+    needs: [test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
