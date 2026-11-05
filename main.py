@@ -22,13 +22,9 @@ from operator_lib.util.config import MissingConfigValueError
 from operator_lib.util.helpers import provide_historic_frames_local, HistoryNeedsRayError
 import pandas as pd
 import numpy as np
-from sklearn.neighbors import NearestNeighbors
-from sklearn.cluster import DBSCAN
-import kneed
 import os
-from itertools import chain
 import datetime
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 import typing
 import datetime
@@ -38,17 +34,70 @@ from operator_lib.util import Config, Inputs, Outputs
 # The consumption is judged per slot of five minutes, against the slots of the same hour of the day in German time.
 SLOT = pd.Timedelta(5, 'min')
 TIMEZONE = 'Europe/Berlin'
-# The slots an hour of the day needs before it is judged: the size of a cluster.
-MIN_SLOTS = 10
 # The slots of each hour of the day are kept this long.
 HISTORY_LENGTH = pd.Timedelta(28, 'd')
 # Between two readings further apart the course of the consumption is not known, so no slot is derived from them.
 MAX_GAP = pd.Timedelta(2, 'h')
+# A slot is excessive above the alarm level of its hour. The tail of the slots of an hour begins above this quantile of
+# them; a generalized Pareto distribution is fitted to it, and the level is the consumption that it exceeds with the
+# probability that gives the false alarms per month of the config.
+TAIL_QUANTILE = 0.9
+# An hour with fewer slots in its tail is judged with the tail of the whole day; while the whole day has fewer, no slot
+# is judged.
+MIN_TAIL = 10
+# The shape of the tail is taken no lower than 0, an exponential tail: estimated from a few dozen slots it comes out
+# below 0 by chance, which caps the level just above the largest slot seen and lets the next larger shower raise an
+# alarm. Towards 0.5 its estimate no longer holds.
+MAX_SHAPE = 0.45
+# What the false alarms per month refer to.
+SLOTS_PER_MONTH = pd.Timedelta(30, 'd') / SLOT
+# The slots are compared to 10 ml, far below what a water meter resolves: slots of an even flow differ by the rounding
+# of floating point numbers only, which would make a tail of a few picolitres and an alarm of every larger slot.
+DECIMALS = 2
+
+
+def alarm_level(litres, probability):
+    # The consumption of a slot that the slots `litres` exceed with `probability`, or None if too few of them lie in
+    # their tail.
+    litres = np.round(np.asarray(litres, dtype=float), DECIMALS)
+    if len(litres) == 0:
+        return None
+    threshold = np.quantile(litres, TAIL_QUANTILE)
+    excesses = litres[litres > threshold] - threshold
+    if len(excesses) < MIN_TAIL:
+        return None
+    shape = tail_shape(excesses)
+    # the mean of the excesses is scale / (1 - shape)
+    scale = excesses.mean() * (1 - shape)
+    # the probability within the tail
+    ratio = probability * len(litres) / len(excesses)
+    if shape == 0:
+        return float(threshold - scale * np.log(ratio))
+    return float(threshold + scale / shape * (ratio ** -shape - 1))
+
+
+def tail_shape(excesses):
+    # The shape of a generalized Pareto distribution from the probability weighted moments of the excesses over its
+    # threshold (Hosking and Wallis, 1987), between 0 and MAX_SHAPE.
+    excesses = np.sort(excesses)
+    n = len(excesses)
+    a0 = excesses.mean()
+    a1 = np.sum((n - np.arange(1, n + 1)) / (n - 1) * excesses) / n
+    if a0 - 2 * a1 <= 0:
+        # excesses that are all alike: as light a tail as can be
+        return 0.0
+    return float(np.clip(2 - a0 / (a0 - 2 * a1), 0, MAX_SHAPE))
+
+
+def config_number(value, default):
+    # A flow that sets no value sends an empty string.
+    return default if value == '' else float(value)
 
 
 class CustomConfig(Config):
     init_phase_length: float = 2
     init_phase_level: str = "d"
+    false_alarms_per_month: float = 1
     # A field of the library, declared again so that flows can set it.
     logger_level: str = "warning"
 
@@ -61,6 +110,10 @@ class CustomConfig(Config):
         
         if self.init_phase_level == '':
             self.init_phase_level = 'd'
+
+        self.false_alarms_per_month = config_number(self.false_alarms_per_month, 1)
+        if not self.false_alarms_per_month > 0:
+            raise ValueError(f'false_alarms_per_month must be above 0, not {self.false_alarms_per_month}')
 
 # The time of a reading is the time of its Kafka message, so there is no input for it.
 class LeakageInputs(Inputs):
@@ -87,7 +140,8 @@ class Operator(OperatorBase):
         if not os.path.exists(self.data_path):
             os.mkdir(self.data_path)
 
-        self.time_window_consumption_clustering = {}
+        # The probability with which a slot of usual consumption lies above the alarm level of its hour.
+        self.false_alarm_probability = self.config.false_alarms_per_month / SLOTS_PER_MONTH
 
         # Per hour of the day: (end of the slot in German time, litres), oldest first. Like everything derived from
         # the meter readings not kept: it is rebuilt from the history at every start.
@@ -166,33 +220,21 @@ class Operator(OperatorBase):
             entries.pop(0)
         return hour, entry
 
-    def determine_epsilon(self):
-        neighbors = NearestNeighbors(n_neighbors=5)
-        neighbors_fit = neighbors.fit(np.array([five_min_consumption for _, five_min_consumption in self.time_window_consumption_list_dict[str(self.last_time_window_start)]]).reshape(-1,1))
-        distances, _ = neighbors_fit.kneighbors(np.array([five_min_consumption for _, five_min_consumption in self.time_window_consumption_list_dict[str(self.last_time_window_start)]]).reshape(-1,1))
-        distances = np.sort(distances, axis=0)
-        distances_x = distances[:,1]
-        kneedle = kneed.KneeLocator(np.linspace(0,1,len(distances_x)), distances_x, S=0.9, curve="convex", direction="increasing")
-        epsilon = kneedle.knee_y
-        if epsilon==0 or epsilon==None:
-            return 1
-        else:
-            return epsilon
+    def alarm_levels(self, completed):
+        # The alarm level of each hour of the completed slots, from the slots before them: those of the hour, or of the
+        # whole day where the hour has too few in its tail; None while neither has enough. The completed slots are the
+        # last ones of their hours, and a meter that reports seldom completes several of the same consumption, which are
+        # judged alike.
+        new = Counter(str(hour) for hour, _ in completed)
+        before = {hour: [litres for _, litres in entries[:len(entries) - new[hour]]]
+                  for hour, entries in self.time_window_consumption_list_dict.items()}
+        levels = {hour: alarm_level(before[hour], self.false_alarm_probability) for hour in new}
+        if None in levels.values():
+            whole_day = alarm_level([litres for slots in before.values() for litres in slots],
+                                    self.false_alarm_probability)
+            levels = {hour: whole_day if level is None else level for hour, level in levels.items()}
+        return levels
 
-    def create_clustering(self, epsilon):
-        self.time_window_consumption_clustering[str(self.last_time_window_start)] = DBSCAN(eps=epsilon, min_samples=MIN_SLOTS).fit(np.array([five_min_consumption 
-                                                                     for _, five_min_consumption in self.time_window_consumption_list_dict[str(self.last_time_window_start)]]).reshape(-1,1))
-        return self.time_window_consumption_clustering[str(self.last_time_window_start)].labels_
-    
-    def test_time_window_consumption(self, clustering_labels):
-        anomalous_indices = np.where(clustering_labels==-1)[0]
-        quantile = np.quantile([five_min_consumption for _, five_min_consumption in self.time_window_consumption_list_dict[str(self.last_time_window_start)]],0.995)
-        anomalous_indices_high = [i for i in anomalous_indices if self.time_window_consumption_list_dict[str(self.last_time_window_start)][i][1] > quantile]
-        if len(self.time_window_consumption_list_dict[str(self.last_time_window_start)])-1 in anomalous_indices_high:
-            logger.warning(f'In den letzten 5 Minuten wurde ungewöhnlich viel verbraucht.')
-
-        return [self.time_window_consumption_list_dict[str(self.last_time_window_start)][i] for i in anomalous_indices_high]
-    
     def run(self, data: typing.Dict[str, typing.Any], selector: str, device_id, timestamp: datetime.datetime):
         # Convert to german time and then forget the timezone. The time windows are of the local
         # day; the output carries the UTC time, since the export reads it as UTC.
@@ -225,60 +267,38 @@ class Operator(OperatorBase):
         else:
             # A reading of a meter that reports seldom can complete several slots, even of two hours. They are all
             # judged; the output shows the hour of the last one and reports any excessive one.
-            anomaly = 0
-            for hour in dict.fromkeys(hour for hour, _ in completed):
-                self.last_time_window_start = hour
-                days_with_excessive_five_min_consumption_during_this_time_window_of_day = self.judge_time_window()
-                if any(entry in days_with_excessive_five_min_consumption_during_this_time_window_of_day
-                       for slot_hour, entry in completed if slot_hour == hour):
-                    anomaly = 1
-            df_cons_last_14_days = self.create_df_cons_last_14_days(days_with_excessive_five_min_consumption_during_this_time_window_of_day)
-            output = self.create_output(anomaly, utc, df_cons_last_14_days)
+            levels = self.alarm_levels(completed)
+            messages = []
+            if any(levels[str(hour)] is not None and litres > levels[str(hour)] for hour, (_, litres) in completed):
+                messages.append('In den letzten 5 Minuten wurde übermäßig viel Wasser verbraucht.')
+            for message in messages:
+                logger.warning(message)
+            self.last_time_window_start = completed[-1][0]
+            df_cons_last_14_days = self.create_df_cons_last_14_days(levels[str(self.last_time_window_start)])
+            output = self.create_output(messages, utc, df_cons_last_14_days)
         logger.debug(output)
         return output
 
-    def judge_time_window(self):
-        # The excessive slots of the hour self.last_time_window_start.
-        if len(self.time_window_consumption_list_dict[str(self.last_time_window_start)]) < MIN_SLOTS:
-            # Below the size of a cluster every slot is an outlier, and below five the neighbours cannot even be
-            # determined.
-            return []
-        epsilon = self.determine_epsilon()
-        clustering_labels = self.create_clustering(epsilon)
-        return self.test_time_window_consumption(clustering_labels)
-
-    def create_df_cons_last_14_days(self, days_with_excessive_five_min_consumption_during_this_time_window_of_day):
-        ends_of_5min_slots_in_time_window = [timestamp for timestamp, _ in self.time_window_consumption_list_dict[str(self.last_time_window_start)] if 
-                                             self.timestamp-timestamp < pd.Timedelta(14, "d")]
-        time_window_5min_consumptions = [consumption for timestamp, consumption in self.time_window_consumption_list_dict[str(self.last_time_window_start)] if 
-                                         self.timestamp-timestamp < pd.Timedelta(14, "d")]
-        anomalies_check_list = []
-        for timestamp, _ in self.time_window_consumption_list_dict[str(self.last_time_window_start)]:
-            if self.timestamp-timestamp < pd.Timedelta(14, "d"):
-                if timestamp in list(chain.from_iterable(days_with_excessive_five_min_consumption_during_this_time_window_of_day)):
-                    anomalies_check_list.append(1)
-                else:
-                    anomalies_check_list.append(0)    
-        df = pd.DataFrame({0:time_window_5min_consumptions, 1:anomalies_check_list}, index=ends_of_5min_slots_in_time_window)
+    def create_df_cons_last_14_days(self, level):
+        # The slots of the last 14 days in the hour self.last_time_window_start, each with 1 if it lies above the alarm
+        # level of the hour.
+        entries = [(end, litres) for end, litres in self.time_window_consumption_list_dict[str(self.last_time_window_start)]
+                   if self.timestamp - end < pd.Timedelta(14, "d")]
+        df = pd.DataFrame({0: [litres for _, litres in entries],
+                           1: [int(level is not None and litres > level) for _, litres in entries]},
+                          index=[end for end, _ in entries])
         return df.reset_index(inplace=False).to_json(orient="values")
-    
-    def create_output(self, anomaly, timestamp, df_cons_last_14_days):
-        if anomaly == 0:
-            return {
-                    "value": anomaly,
-                    "timestamp": timestamp_to_str(timestamp),
-                    "last_consumptions": df_cons_last_14_days,
-                    "time_window": f'{str(self.last_time_window_start)}-{str((datetime.datetime.combine(datetime.date.today(), self.last_time_window_start) +datetime.timedelta(hours=1)).time())}'
-            }
-        elif anomaly == 1:
-            message = f'In den letzten 5 Minuten wurde übermäßig viel Wasser verbraucht.'
-        return {
-                    "value": anomaly,
-                    "timestamp": timestamp_to_str(timestamp),
-                    "message": message,
-                    "last_consumptions": df_cons_last_14_days,
-                    "time_window": f'{str(self.last_time_window_start)}-{str((datetime.datetime.combine(datetime.date.today(), self.last_time_window_start) +datetime.timedelta(hours=1)).time())}'
-        }    
+
+    def create_output(self, messages, timestamp, df_cons_last_14_days):
+        output = {
+                "value": int(bool(messages)),
+                "timestamp": timestamp_to_str(timestamp),
+        }
+        if messages:
+            output["message"] = ' '.join(messages)
+        output["last_consumptions"] = df_cons_last_14_days
+        output["time_window"] = f'{str(self.last_time_window_start)}-{str((datetime.datetime.combine(datetime.date.today(), self.last_time_window_start) +datetime.timedelta(hours=1)).time())}'
+        return output
 
 
 from operator_lib.operator_lib import OperatorLib

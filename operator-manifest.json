@@ -41,6 +41,10 @@
       "type": "string"
     },
     {
+      "name": "false_alarms_per_month",
+      "type": "float"
+    },
+    {
       "name": "logger_level",
       "type": "string"
     }

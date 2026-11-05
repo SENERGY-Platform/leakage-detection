@@ -33,6 +33,23 @@ class TestConfig(unittest.TestCase):
     def test_takes_the_initial_phase_that_is_set(self):
         self.assertEqual((14.0, "h"), self.initial_phase({"init_phase_length": "14", "init_phase_level": "h"}))
 
+    def judgement(self, values):
+        config = CustomConfig(values)
+        return config.false_alarms_per_month
+
+    def test_takes_the_default_judgement_when_it_is_missing(self):
+        self.assertEqual(1.0, self.judgement({}))
+
+    def test_takes_the_default_judgement_when_it_is_empty(self):
+        self.assertEqual(1.0, self.judgement({"false_alarms_per_month": ""}))
+
+    def test_takes_the_judgement_that_is_set(self):
+        self.assertEqual(4.0, self.judgement({"false_alarms_per_month": "4"}))
+
+    def test_rejects_no_false_alarms_per_month(self):
+        with self.assertRaises(ValueError):
+            CustomConfig({"false_alarms_per_month": "0"})
+
 
 if __name__ == '__main__':
     unittest.main()
