@@ -2,7 +2,7 @@
 
 ## Scope
 
-This applies to how a slot is judged in [main.py](../main.py) (`alarm_level` and `Operator.alarm_levels`), with slots of five minutes and 28 days of history. The figures below come from simulated households, not from real meters. They compare the variants with each other, and they do not predict the alarm levels of real meters.
+This applies to how a slot is judged in [main.py](../main.py) (`alarm_level` and `Operator.alarm_levels`), with slots of five minutes and 28 days of history. The figures below come from simulated households, not from real meters. They compare the variants with each other, and they do not predict the alarm levels of real meters. The continuous flow is a fixed rule and is not covered here; the README describes it.
 
 ## Decision
 

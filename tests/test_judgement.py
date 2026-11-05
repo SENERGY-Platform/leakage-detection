@@ -58,7 +58,8 @@ class TestJudgement(unittest.TestCase):
         self.dir.cleanup()
 
     def start(self, history=()):
-        # without an initial phase, so that every slot is judged
+        # without an initial phase, so that every slot is judged, and without the continuous flow, which the slots of
+        # these households, consuming independently of each other, never stop
         for at, reading in history:
             self.timescale.write(at, reading)
             self.reading = reading
@@ -68,7 +69,8 @@ class TestJudgement(unittest.TestCase):
         with self.timescale.patched():
             operator.init(None, None, None, None, None, None,
                           config=CustomConfig({"init_phase_length": "0",
-                                               "init_phase_level": "d"}))
+                                               "init_phase_level": "d",
+                                               "continuous_flow_hours": "0"}))
         return operator
 
     def judge(self, operator, litres_per_slot):

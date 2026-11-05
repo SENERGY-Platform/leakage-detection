@@ -98,6 +98,8 @@ class CustomConfig(Config):
     init_phase_length: float = 2
     init_phase_level: str = "d"
     false_alarms_per_month: float = 1
+    continuous_flow_hours: float = 24
+    rest_minutes: float = 60
     # A field of the library, declared again so that flows can set it.
     logger_level: str = "warning"
 
@@ -112,8 +114,14 @@ class CustomConfig(Config):
             self.init_phase_level = 'd'
 
         self.false_alarms_per_month = config_number(self.false_alarms_per_month, 1)
+        self.continuous_flow_hours = config_number(self.continuous_flow_hours, 24)
+        self.rest_minutes = config_number(self.rest_minutes, 60)
         if not self.false_alarms_per_month > 0:
             raise ValueError(f'false_alarms_per_month must be above 0, not {self.false_alarms_per_month}')
+        if not self.continuous_flow_hours >= 0:
+            raise ValueError(f'continuous_flow_hours must be 0 or more, not {self.continuous_flow_hours}')
+        if not self.rest_minutes > 0:
+            raise ValueError(f'rest_minutes must be above 0, not {self.rest_minutes}')
 
 # The time of a reading is the time of its Kafka message, so there is no input for it.
 class LeakageInputs(Inputs):
@@ -142,6 +150,8 @@ class Operator(OperatorBase):
 
         # The probability with which a slot of usual consumption lies above the alarm level of its hour.
         self.false_alarm_probability = self.config.false_alarms_per_month / SLOTS_PER_MONTH
+        self.continuous_flow_length = pd.Timedelta(self.config.continuous_flow_hours, 'h')
+        self.rest_length = pd.Timedelta(self.config.rest_minutes, 'min')
 
         # Per hour of the day: (end of the slot in German time, litres), oldest first. Like everything derived from
         # the meter readings not kept: it is rebuilt from the history at every start.
@@ -149,6 +159,12 @@ class Operator(OperatorBase):
         # The last meter reading and the start of the open slot with the reading there, each as (UTC time, reading).
         self.last_reading = None
         self.slot_start = None
+        # The continuous flow, in UTC: the end of the last slot, since when the slots up to it consumed nothing, and
+        # since when the meter has not stood still for the rest length; whether that has been reported.
+        self.last_slot_end = None
+        self.still_since = None
+        self.flowing_since = None
+        self.flow_reported = False
         history = self.read_history()
         for at, reading in history:
             self.add_reading(at, reading)
@@ -218,7 +234,35 @@ class Operator(OperatorBase):
         entries.append(entry)
         while entry[0] - entries[0][0] > HISTORY_LENGTH:
             entries.pop(0)
+        self.follow_flow(start, end, litres)
         return hour, entry
+
+    def follow_flow(self, start, end, litres):
+        # Follows since when the meter has not stood still for the rest length. A gap in the slots, across which the
+        # course is not known, counts as standing still, so that an outage of the meter raises no alarm.
+        if start != self.last_slot_end:
+            self.still_since = None
+            self.flowing_since = None
+        if litres > 0:
+            self.still_since = None
+            if self.flowing_since is None:
+                self.flowing_since = start
+                self.flow_reported = False
+        else:
+            if self.still_since is None:
+                self.still_since = start
+            if end - self.still_since >= self.rest_length:
+                self.flowing_since = None
+        self.last_slot_end = end
+
+    def continuous_flow(self):
+        # Whether the meter has now gone the continuous flow length without standing still. It is reported once, until
+        # the meter stands still again; after a restart once more, since whether it was reported is not kept.
+        if (self.continuous_flow_length == pd.Timedelta(0) or self.flowing_since is None or self.flow_reported
+                or self.last_slot_end - self.flowing_since < self.continuous_flow_length):
+            return False
+        self.flow_reported = True
+        return True
 
     def alarm_levels(self, completed):
         # The alarm level of each hour of the completed slots, from the slots before them: those of the hour, or of the
@@ -271,6 +315,9 @@ class Operator(OperatorBase):
             messages = []
             if any(levels[str(hour)] is not None and litres > levels[str(hour)] for hour, (_, litres) in completed):
                 messages.append('In den letzten 5 Minuten wurde übermäßig viel Wasser verbraucht.')
+            if self.continuous_flow():
+                messages.append(f'Seit mindestens {self.config.continuous_flow_hours:g} Stunden fließt ununterbrochen '
+                                f'Wasser: Der Zähler stand in dieser Zeit nie {self.config.rest_minutes:g} Minuten still.')
             for message in messages:
                 logger.warning(message)
             self.last_time_window_start = completed[-1][0]

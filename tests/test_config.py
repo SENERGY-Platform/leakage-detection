@@ -35,20 +35,30 @@ class TestConfig(unittest.TestCase):
 
     def judgement(self, values):
         config = CustomConfig(values)
-        return config.false_alarms_per_month
+        return config.false_alarms_per_month, config.continuous_flow_hours, config.rest_minutes
 
     def test_takes_the_default_judgement_when_it_is_missing(self):
-        self.assertEqual(1.0, self.judgement({}))
+        self.assertEqual((1.0, 24.0, 60.0), self.judgement({}))
 
     def test_takes_the_default_judgement_when_it_is_empty(self):
-        self.assertEqual(1.0, self.judgement({"false_alarms_per_month": ""}))
+        self.assertEqual((1.0, 24.0, 60.0), self.judgement({"false_alarms_per_month": "", "continuous_flow_hours": "",
+                                                            "rest_minutes": ""}))
 
     def test_takes_the_judgement_that_is_set(self):
-        self.assertEqual(4.0, self.judgement({"false_alarms_per_month": "4"}))
+        self.assertEqual((4.0, 0.0, 30.0), self.judgement({"false_alarms_per_month": "4", "continuous_flow_hours": "0",
+                                                           "rest_minutes": "30"}))
 
     def test_rejects_no_false_alarms_per_month(self):
         with self.assertRaises(ValueError):
             CustomConfig({"false_alarms_per_month": "0"})
+
+    def test_rejects_negative_continuous_flow_hours(self):
+        with self.assertRaises(ValueError):
+            CustomConfig({"continuous_flow_hours": "-1"})
+
+    def test_rejects_a_standstill_of_no_minutes(self):
+        with self.assertRaises(ValueError):
+            CustomConfig({"rest_minutes": "0"})
 
 
 if __name__ == '__main__':

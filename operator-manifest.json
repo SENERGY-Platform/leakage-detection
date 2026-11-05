@@ -45,6 +45,14 @@
       "type": "float"
     },
     {
+      "name": "continuous_flow_hours",
+      "type": "float"
+    },
+    {
+      "name": "rest_minutes",
+      "type": "float"
+    },
+    {
       "name": "logger_level",
       "type": "string"
     }
